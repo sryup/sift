@@ -1,0 +1,60 @@
+#!/bin/sh
+set -u
+
+VERSION="0.1.0"
+
+show_help() {
+    cat << 'EOF'
+Usage: sift [OPTIONS]
+
+A lightweight, portable Linux system information tool.
+
+Options:
+  -h, --help       Show this help message and exit
+  -v, --version    Show version information and exit
+      --no-color   Disable ANSI color output
+EOF
+}
+
+show_version() {
+    printf 'sift %s\n' "$VERSION"
+}
+
+# Parse and validate all CLI arguments
+opt_help=0
+opt_version=0
+opt_no_color=0
+
+for arg do
+    case "$arg" in
+        -h|--help)
+            opt_help=1
+            ;;
+        -v|--version)
+            opt_version=1
+            ;;
+        --no-color)
+            opt_no_color=1
+            ;;
+        *)
+            printf "sift: unrecognized option '%s'\n" "$arg" >&2
+            printf "Try 'sift --help' for more information.\n" >&2
+            exit 2
+            ;;
+    esac
+done
+
+# Precedence: --help has higher priority than --version
+if [ "$opt_help" -eq 1 ]; then
+    show_help
+    exit 0
+fi
+
+if [ "$opt_version" -eq 1 ]; then
+    show_version
+    exit 0
+fi
+
+# Main execution entry point (to be implemented in subsequent tasks)
+: "$opt_no_color"
+exit 0
