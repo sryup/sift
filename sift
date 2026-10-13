@@ -20,6 +20,39 @@ show_version() {
     printf 'sift %s\n' "$VERSION"
 }
 
+init_colors() {
+    c_reset=""
+    c_label=""
+
+    # 1. User specified --no-color
+    if [ "$opt_no_color" -eq 1 ]; then
+        return 0
+    fi
+
+    # 2. Output is not an interactive terminal
+    if [ ! -t 1 ]; then
+        return 0
+    fi
+
+    # 3. NO_COLOR environment variable is set and non-empty
+    if [ -n "${NO_COLOR:-}" ]; then
+        return 0
+    fi
+
+    # 4. Terminal type is dumb
+    if [ "${TERM:-}" = "dumb" ]; then
+        return 0
+    fi
+
+    c_reset=$(printf '\033[0m')
+    c_label=$(printf '\033[1;36m')
+}
+
+# shellcheck disable=SC2317
+print_field() {
+    printf '%s%-11s%s %s\n' "$c_label" "$1" "$c_reset" "$2"
+}
+
 # Parse and validate all CLI arguments
 opt_help=0
 opt_version=0
@@ -55,6 +88,8 @@ if [ "$opt_version" -eq 1 ]; then
     exit 0
 fi
 
+# Initialize terminal colors based on environment and options
+init_colors
+
 # Main execution entry point (to be implemented in subsequent tasks)
-: "$opt_no_color"
 exit 0
