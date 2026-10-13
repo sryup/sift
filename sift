@@ -457,6 +457,13 @@ if [ "$opt_version" -eq 1 ]; then
     exit 0
 fi
 
+# Ensure running on Linux operating system
+os_kernel=$(uname -s 2>/dev/null || echo "")
+if [ "$os_kernel" != "Linux" ]; then
+    printf 'sift: error: unsupported operating system (Linux required)\n' >&2
+    exit 1
+fi
+
 # Initialize terminal colors based on environment and options
 init_colors
 
