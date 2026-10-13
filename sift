@@ -248,6 +248,180 @@ get_uptime() {
     printf '%s' "$uptime_str"
 }
 
+valid_float() {
+    case "$1" in
+        *.*)
+            _int="${1%%.*}"
+            _frac="${1#*.}"
+            case "$_int" in "" | *[!0-9]*) return 1 ;; esac
+            case "$_frac" in "" | *[!0-9]*) return 1 ;; esac
+            ;;
+        *)
+            case "$1" in "" | *[!0-9]*) return 1 ;; esac
+            ;;
+    esac
+    return 0
+}
+
+get_cpu() {
+    cpu_model=""
+    cpu_count=0
+
+    if [ -f /proc/cpuinfo ] && [ -r /proc/cpuinfo ]; then
+        while IFS=':' read -r key val || [ -n "${key:-}" ]; do
+            k="${key#"${key%%[! 	]*}"}"
+            k="${k%"${k##*[! 	]}"}"
+            case "$k" in
+                "model name")
+                    if [ -z "$cpu_model" ]; then
+                        v="${val#"${val%%[! 	]*}"}"
+                        v="${v%"${v##*[! 	]}"}"
+                        [ -n "$v" ] && cpu_model="$v"
+                    fi
+                    ;;
+                "processor")
+                    v="${val#"${val%%[! 	]*}"}"
+                    v="${v%"${v##*[! 	]}"}"
+                    case "$v" in
+                        "" | *[!0-9]*) ;;
+                        *) cpu_count=$((cpu_count + 1)) ;;
+                    esac
+                    ;;
+            esac
+        done < /proc/cpuinfo 2>/dev/null
+    fi
+
+    if [ -z "$cpu_model" ]; then
+        arch=$(uname -m 2>/dev/null || echo "")
+        if [ -n "$arch" ]; then
+            cpu_model="$arch Processor"
+        else
+            cpu_model="N/A"
+        fi
+    fi
+
+    if [ "$cpu_count" -gt 0 ]; then
+        count_str="$cpu_count"
+    else
+        count_str="N/A"
+    fi
+
+    if [ "$cpu_model" = "N/A" ] && [ "$count_str" = "N/A" ]; then
+        printf 'N/A'
+    else
+        printf '%s (%s)' "$cpu_model" "$count_str"
+    fi
+}
+
+get_load() {
+    load_str="N/A"
+
+    if [ -f /proc/loadavg ] && [ -r /proc/loadavg ]; then
+        if read -r l1 l5 l15 _ < /proc/loadavg 2>/dev/null && [ -n "${l1:-}" ] && [ -n "${l5:-}" ] && [ -n "${l15:-}" ]; then
+            if valid_float "$l1" && valid_float "$l5" && valid_float "$l15"; then
+                load_str="${l1}, ${l5}, ${l15}"
+            fi
+        fi
+    fi
+
+    printf '%s' "$load_str"
+}
+
+get_memory() {
+    mem_total=""
+    mem_avail=""
+
+    if [ -f /proc/meminfo ] && [ -r /proc/meminfo ]; then
+        while read -r key val _ || [ -n "${key:-}" ]; do
+            case "$key" in
+                MemTotal:)
+                    case "$val" in
+                        "" | *[!0-9]*) ;;
+                        *) mem_total="$val" ;;
+                    esac
+                    ;;
+                MemAvailable:)
+                    case "$val" in
+                        "" | *[!0-9]*) ;;
+                        *) mem_avail="$val" ;;
+                    esac
+                    ;;
+            esac
+        done < /proc/meminfo 2>/dev/null
+    fi
+
+    if [ -z "$mem_total" ] || [ "$mem_total" -le 0 ] 2>/dev/null; then
+        printf 'N/A'
+        return 0
+    fi
+
+    avail_valid=0
+    if [ -n "$mem_avail" ]; then
+        case "$mem_avail" in
+            *[!0-9]*) ;;
+            *)
+                if [ "$mem_avail" -ge 0 ] 2>/dev/null && [ "$mem_avail" -le "$mem_total" ] 2>/dev/null; then
+                    avail_valid=1
+                fi
+                ;;
+        esac
+    fi
+
+    if [ "$avail_valid" -eq 1 ]; then
+        LC_ALL=C awk -v t="$mem_total" -v a="$mem_avail" 'BEGIN {
+            u = t - a
+            pct = (t > 0) ? (u / t) * 100 : 0
+            if (t >= 1048576) { t_s = sprintf("%.1f GiB", t / 1048576) }
+            else { t_s = sprintf("%.1f MiB", t / 1024) }
+            if (u >= 1048576) { u_s = sprintf("%.1f GiB", u / 1048576) }
+            else { u_s = sprintf("%.1f MiB", u / 1024) }
+            printf "%s / %s (%.0f%%)", u_s, t_s, pct
+        }'
+    else
+        LC_ALL=C awk -v t="$mem_total" 'BEGIN {
+            if (t >= 1048576) { t_s = sprintf("%.1f GiB", t / 1048576) }
+            else { t_s = sprintf("%.1f MiB", t / 1024) }
+            printf "N/A / %s (N/A)", t_s
+        }'
+    fi
+}
+
+get_disk() {
+    df_out=""
+    df_out=$(df -P -k / 2>/dev/null) || df_out=""
+
+    if [ -z "$df_out" ]; then
+        printf 'N/A'
+        return 0
+    fi
+
+    parsed=$(LC_ALL=C printf '%s\n' "$df_out" | LC_ALL=C awk '
+        NR == 2 {
+            if (NF >= 6) {
+                tot = $(NF-4)
+                usd = $(NF-3)
+                pct = $(NF-1)
+                if (tot ~ /^[0-9]+$/ && usd ~ /^[0-9]+$/ && pct ~ /^[0-9]+%$/ && tot > 0) {
+                    if (tot >= 1048576) { t_s = sprintf("%.1f GiB", tot / 1048576) }
+                    else { t_s = sprintf("%.1f MiB", tot / 1024) }
+                    if (usd >= 1048576) { u_s = sprintf("%.1f GiB", usd / 1048576) }
+                    else { u_s = sprintf("%.1f MiB", usd / 1024) }
+                    printf "%s / %s (%s)", u_s, t_s, pct
+                    ok = 1
+                    exit 0
+                }
+            }
+        }
+        END { if (!ok) exit 1 }
+    ') || parsed=""
+
+    if [ -n "$parsed" ]; then
+        printf '%s' "$parsed"
+    else
+        printf 'N/A'
+    fi
+}
+
 # Parse and validate all CLI arguments
 opt_help=0
 opt_version=0
@@ -286,10 +460,14 @@ fi
 # Initialize terminal colors based on environment and options
 init_colors
 
-# Collect and display system identity information
+# Collect and display system snapshot
 print_field "OS:" "$(get_os)"
 print_field "Host:" "$(get_host)"
 print_field "Kernel:" "$(get_kernel)"
 print_field "Uptime:" "$(get_uptime)"
+print_field "CPU:" "$(get_cpu)"
+print_field "Load:" "$(get_load)"
+print_field "Memory:" "$(get_memory)"
+print_field "Disk (/):" "$(get_disk)"
 
 exit 0
