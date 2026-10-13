@@ -48,9 +48,204 @@ init_colors() {
     c_label=$(printf '\033[1;36m')
 }
 
-# shellcheck disable=SC2317
 print_field() {
     printf '%s%-11s%s %s\n' "$c_label" "$1" "$c_reset" "$2"
+}
+
+parse_os_val() {
+    raw="$1"
+    case "$raw" in
+        '"'*'"')
+            inner="${raw%\"}"
+            inner="${inner#\"}"
+
+            # Check if trailing quote was escaped (odd number of trailing backslashes)
+            trailing_bs=""
+            tmp="$inner"
+            while [ "${tmp%\\}" != "$tmp" ]; do
+                trailing_bs="${trailing_bs}\\"
+                tmp="${tmp%\\}"
+            done
+            len=${#trailing_bs}
+            if [ $((len % 2)) -ne 0 ]; then
+                return 0
+            fi
+
+            unescaped=""
+            while :; do
+                case "$inner" in
+                    *\\*)
+                        prefix="${inner%%\\*}"
+                        rest="${inner#*\\}"
+                        char="${rest%"${rest#?}"}"
+                        inner="${rest#?}"
+                        case "$char" in
+                            '"' | "\\" | '$' | '`')
+                                unescaped="${unescaped}${prefix}${char}"
+                                ;;
+                            *)
+                                unescaped="${unescaped}${prefix}\\${char}"
+                                ;;
+                        esac
+                        ;;
+                    *)
+                        unescaped="${unescaped}${inner}"
+                        break
+                        ;;
+                esac
+            done
+            printf '%s' "$unescaped"
+            ;;
+        "'"*"'")
+            inner="${raw%\'}"
+            inner="${inner#\'}"
+            printf '%s' "$inner"
+            ;;
+        *[\'\"]* | *'`'* | *\$*)
+            # Contains unclosed/illegal quotes or expansions -> invalid
+            ;;
+        *)
+            printf '%s' "$raw"
+            ;;
+    esac
+}
+
+get_os() {
+    os_name=""
+    os_pretty=""
+    os_fallback=""
+
+    if [ -f /etc/os-release ] && [ -r /etc/os-release ]; then
+        while IFS='=' read -r key val || [ -n "${key:-}" ]; do
+            case "$key" in
+                ""|\#*) continue ;;
+                PRETTY_NAME)
+                    parsed=$(parse_os_val "$val")
+                    [ -n "$parsed" ] && os_pretty="$parsed"
+                    ;;
+                NAME)
+                    parsed=$(parse_os_val "$val")
+                    [ -n "$parsed" ] && os_fallback="$parsed"
+                    ;;
+            esac
+        done < /etc/os-release 2>/dev/null
+    fi
+
+    if [ -n "$os_pretty" ]; then
+        os_name="$os_pretty"
+    elif [ -n "$os_fallback" ]; then
+        os_name="$os_fallback"
+    fi
+
+    if [ -z "$os_name" ]; then
+        os_name=$(uname -s 2>/dev/null || echo "")
+        [ -z "$os_name" ] && os_name="N/A"
+    fi
+
+    if [ "$os_name" != "N/A" ]; then
+        arch=$(uname -m 2>/dev/null || echo "")
+        if [ -n "$arch" ]; then
+            os_name="$os_name $arch"
+        fi
+    fi
+
+    printf '%s' "$os_name"
+}
+
+get_host() {
+    host_name=""
+    if [ -f /proc/sys/kernel/hostname ] && [ -r /proc/sys/kernel/hostname ]; then
+        read -r host_name < /proc/sys/kernel/hostname 2>/dev/null || host_name=""
+    fi
+
+    if [ -z "$host_name" ]; then
+        host_name=$(uname -n 2>/dev/null || echo "")
+    fi
+
+    [ -z "$host_name" ] && host_name="N/A"
+    printf '%s' "$host_name"
+}
+
+get_kernel() {
+    kernel_name=$(uname -r 2>/dev/null || echo "")
+    [ -z "$kernel_name" ] && kernel_name="N/A"
+    printf '%s' "$kernel_name"
+}
+
+get_uptime() {
+    uptime_str="N/A"
+
+    if [ -f /proc/uptime ] && [ -r /proc/uptime ]; then
+        raw_up=""
+        if read -r raw_up _ < /proc/uptime 2>/dev/null && [ -n "${raw_up:-}" ]; then
+            valid_num=0
+            case "$raw_up" in
+                *.*)
+                    sec="${raw_up%%.*}"
+                    frac="${raw_up#*.}"
+                    case "$sec" in "" | *[!0-9]*) ;; *)
+                        case "$frac" in "" | *[!0-9]*) ;; *)
+                            valid_num=1
+                            ;;
+                        esac
+                        ;;
+                    esac
+                    ;;
+                *)
+                    sec="$raw_up"
+                    case "$sec" in "" | *[!0-9]*) ;; *)
+                        valid_num=1
+                        ;;
+                    esac
+                    ;;
+            esac
+
+            if [ "$valid_num" -eq 1 ]; then
+                while [ "$sec" != "${sec#0}" ] && [ "$sec" != "0" ]; do
+                    sec="${sec#0}"
+                done
+
+                # Bound check: max 2147483647
+                within_bound=1
+                if [ "${#sec}" -gt 10 ]; then
+                    within_bound=0
+                elif [ "${#sec}" -eq 10 ]; then
+                    sec_prefix="${sec%?????}"
+                    if [ "$sec_prefix" -gt 21474 ]; then
+                        within_bound=0
+                    elif [ "$sec_prefix" -eq 21474 ]; then
+                        sec_suffix="${sec#?????}"
+                        while [ "$sec_suffix" != "${sec_suffix#0}" ] && [ "$sec_suffix" != "0" ]; do
+                            sec_suffix="${sec_suffix#0}"
+                        done
+                        if [ "$sec_suffix" -gt 83647 ]; then
+                            within_bound=0
+                        fi
+                    fi
+                fi
+
+                if [ "$within_bound" -eq 1 ]; then
+                    days=$((sec / 86400))
+                    rem=$((sec % 86400))
+                    hours=$((rem / 3600))
+                    rem=$((rem % 3600))
+                    mins=$((rem / 60))
+
+                    if [ "$days" -gt 0 ]; then
+                        uptime_str="${days}d ${hours}h ${mins}m"
+                    elif [ "$hours" -gt 0 ]; then
+                        uptime_str="${hours}h ${mins}m"
+                    elif [ "$mins" -gt 0 ]; then
+                        uptime_str="${mins}m"
+                    else
+                        uptime_str="0m"
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    printf '%s' "$uptime_str"
 }
 
 # Parse and validate all CLI arguments
@@ -91,5 +286,10 @@ fi
 # Initialize terminal colors based on environment and options
 init_colors
 
-# Main execution entry point (to be implemented in subsequent tasks)
+# Collect and display system identity information
+print_field "OS:" "$(get_os)"
+print_field "Host:" "$(get_host)"
+print_field "Kernel:" "$(get_kernel)"
+print_field "Uptime:" "$(get_uptime)"
+
 exit 0
