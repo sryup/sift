@@ -22,6 +22,8 @@ show_version() {
 
 init_colors() {
     c_reset=""
+    c_host=""
+    c_branch=""
     c_label=""
 
     # 1. User specified --no-color
@@ -45,11 +47,17 @@ init_colors() {
     fi
 
     c_reset=$(printf '\033[0m')
-    c_label=$(printf '\033[1;36m')
+    c_host=$(printf '\033[1;32m')
+    c_branch=$(printf '\033[90m')
+    c_label=$(printf '\033[1;32m')
 }
 
-print_field() {
-    printf '%s%-11s%s %s\n' "$c_label" "$1" "$c_reset" "$2"
+print_header() {
+    printf '%s%s%s (%s)\n' "$c_host" "$1" "$c_reset" "$2"
+}
+
+print_branch() {
+    printf '%s%s%s %s%-7s%s %s\n' "$c_branch" "$1" "$c_reset" "$c_label" "$2" "$c_reset" "$3"
 }
 
 parse_os_val() {
@@ -468,13 +476,13 @@ fi
 init_colors
 
 # Collect and display system snapshot
-print_field "OS:" "$(get_os)"
-print_field "Host:" "$(get_host)"
-print_field "Kernel:" "$(get_kernel)"
-print_field "Uptime:" "$(get_uptime)"
-print_field "CPU:" "$(get_cpu)"
-print_field "Load:" "$(get_load)"
-print_field "Memory:" "$(get_memory)"
-print_field "Disk (/):" "$(get_disk)"
+print_header "$(get_host)" "$(get_os)"
+print_branch "├─" "kernel" "$(get_kernel)"
+print_branch "├─" "uptime" "$(get_uptime)"
+print_branch "├─" "cpu"    "$(get_cpu)"
+print_branch "├─" "load"   "$(get_load)"
+print_branch "├─" "memory" "$(get_memory)"
+print_branch "└─" "disk"   "$(get_disk)"
 
 exit 0
+
