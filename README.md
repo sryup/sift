@@ -6,7 +6,7 @@ Sift provides an instantaneous, read-only snapshot of essential system metrics w
 
 ## Features
 
-- **Tree-Structured Snapshot:** Gathers essential system details into an elegant, hierarchical tree structure (Host/OS header, followed by kernel, uptime, cpu, load, memory, and disk).
+- **Tree-Structured Snapshot:** Gathers essential system details into an elegant, hierarchical tree structure (Host/OS header, followed by kernel, uptime, cpu, load, memory, temperature, and disk).
 - **Minimal Dependencies:** Implemented as a single-file POSIX shell script relying only on standard utilities.
 - **Smart Terminal Colors:** Automatically detects interactive terminal capabilities with bold green accents and dim tree branches, while safely disabling colors for non-TTY pipelines, `--no-color`, `NO_COLOR`, and `TERM=dumb`.
 - **Compact Smart Uptime:** Formats system uptime cleanly (`Xd Xh Xm`, `Xh Xm`, `Xm`, or `0m`).
@@ -25,6 +25,7 @@ server (Debian GNU/Linux 13 (trixie) x86_64)
 ├─ cpu     AMD Ryzen 7 7800X3D (16)
 ├─ load    0.15, 0.08, 0.02
 ├─ memory  4.2 GiB / 31.2 GiB (13%)
+├─ temp    47.5 °C
 └─ disk    45.8 GiB / 468.2 GiB (10%)
 ```
 
@@ -43,6 +44,7 @@ Sift is intended solely for Linux operating systems. It does not require externa
 - `/proc/loadavg` (for 1, 5, and 15-minute load averages)
 - `/proc/meminfo` (for `MemTotal` and `MemAvailable`)
 - `/proc/sys/kernel/hostname` (for system hostname)
+- `/sys/class/thermal` and `/sys/class/hwmon` (for the highest readable hardware temperature)
 
 ## Installation & Usage
 
@@ -93,6 +95,7 @@ sudo rm /usr/local/bin/sift
 
 - **Container CPU Metrics:** CPU core count is derived from `/proc/cpuinfo`. In container environments without virtualization layers (such as `lxcfs`), this count may reflect the host system's logical processors rather than container-specific cgroup CPU quotas or limits.
 - **Non-Standard Architectures:** Linux distributions on certain architectures (e.g., IBM s390x) format `/proc/cpuinfo` with different field keys. On such systems, Sift displays `(N/A)` for processor count rather than failing. Sift has not been validated on every niche Linux distribution or hardware architecture.
+- **Temperature Sensors:** Temperature output is the highest valid reading exposed through Linux thermal zones or hwmon. Virtual machines, containers, or systems without readable sensors display `N/A`.
 - **High-Latency Remote Mounts:** If the root filesystem (`/`) is mounted over a network share (such as NFS or CIFS), execution time may be affected by network latency when querying `df`.
 
 ## License

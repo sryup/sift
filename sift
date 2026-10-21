@@ -1,7 +1,7 @@
 #!/bin/sh
 set -u
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 
 show_help() {
     cat << 'EOF'
@@ -394,6 +394,39 @@ get_memory() {
     fi
 }
 
+get_temperature() {
+    temperature=$(
+        for sensor in \
+            /sys/class/thermal/thermal_zone*/temp \
+            /sys/class/hwmon/hwmon*/temp*_input
+        do
+            [ -f "$sensor" ] && [ -r "$sensor" ] || continue
+            temp_raw=""
+            read -r temp_raw < "$sensor" 2>/dev/null || continue
+            printf '%s\n' "$temp_raw"
+        done | LC_ALL=C awk '
+            /^-?[0-9][0-9]*$/ {
+                # Linux thermal and hwmon temperatures use millidegrees Celsius.
+                if ($1 >= -273150 && $1 <= 300000 && (!found || $1 > hottest)) {
+                    hottest = $1
+                    found = 1
+                }
+            }
+            END {
+                if (found) {
+                    printf "%.1f °C", hottest / 1000
+                }
+            }
+        '
+    )
+
+    if [ -n "$temperature" ]; then
+        printf '%s' "$temperature"
+    else
+        printf 'N/A'
+    fi
+}
+
 get_disk() {
     df_out=""
     df_out=$(df -P -k / 2>/dev/null) || df_out=""
@@ -482,6 +515,7 @@ print_branch "├─" "uptime" "$(get_uptime)"
 print_branch "├─" "cpu"    "$(get_cpu)"
 print_branch "├─" "load"   "$(get_load)"
 print_branch "├─" "memory" "$(get_memory)"
+print_branch "├─" "temp"   "$(get_temperature)"
 print_branch "└─" "disk"   "$(get_disk)"
 
 exit 0
