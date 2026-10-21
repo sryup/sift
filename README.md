@@ -12,6 +12,7 @@ Sift provides an instantaneous, read-only snapshot of essential system metrics w
 - **Compact Smart Uptime:** Formats system uptime cleanly (`Xd Xh Xm`, `Xh Xm`, `Xm`, or `0m`).
 - **Graceful Degradation:** Falls back to secondary sources or `N/A` when supported system data is unavailable or fails to parse properly.
 - **Unprivileged Execution:** Requires no root or `sudo` privileges to inspect system metrics.
+- **Installation Management:** `setup.sh` installs, updates, or removes Sift with system-wide, per-user, and custom destinations. Updates happen only when requested.
 
 ## Sample Output
 
@@ -58,31 +59,79 @@ Attribute semantics follow the Linux kernel documentation for [hwmon](https://do
 
 ## Installation & Usage
 
-### Running Directly (Recommended)
+### Get Sift
 
-You can clone or download the repository and run Sift directly without installation:
+Clone the repository (or download and extract its ZIP), then enter the directory:
 
 ```sh
 git clone https://github.com/sryup/sift.git
 cd sift
-chmod +x sift
-./sift
 ```
 
-### System-Wide Installation
+Keep this checkout for `setup.sh`. The helper needs a POSIX shell and common Linux utilities, including `awk`, `mktemp`, and GNU-compatible coreutils (`mv -T`). Only online updates require `curl` and HTTPS CA certificates. Running `sift` itself still uses only the runtime dependencies listed above.
 
-To make Sift accessible globally from any directory, install it into `/usr/local/bin`:
+### System-Wide Installation, Update, and Removal
+
+Run these commands from the checkout. The default destination is `/usr/local/bin/sift`:
 
 ```sh
-sudo install -m 755 sift /usr/local/bin/sift
+sudo sh setup.sh install
+sift --version
+sift
 ```
 
-> [!NOTE]
-> Elevated privileges (`sudo`) are only required to copy the script into system binary paths during installation. Sift itself never requires `sudo` or root privileges to run.
+To update the installed executable from GitHub `main`:
 
-To uninstall:
 ```sh
-sudo rm /usr/local/bin/sift
+sudo sh setup.sh update
+sift --version
+```
+
+To remove the installed executable:
+
+```sh
+sudo sh setup.sh uninstall
+```
+
+### Per-User Installation (No sudo)
+
+Use `--user` consistently to manage `$HOME/.local/bin/sift`:
+
+```sh
+sh setup.sh install --user
+export PATH="$HOME/.local/bin:$PATH"
+sift --version
+```
+
+For later updates or removal:
+
+```sh
+sh setup.sh update --user
+sh setup.sh uninstall --user
+```
+
+The `export` affects the current shell. Add it to your shell profile if you want it to persist; the helper does not edit your profile. Avoid `sudo` with `--user`, as it may select root's home directory.
+
+### Custom Destination
+
+`--prefix` takes an absolute directory; Sift is placed in its `bin` subdirectory. Use the same prefix for all actions:
+
+```sh
+sh setup.sh install --prefix /path/to/apps
+sh setup.sh update --prefix /path/to/apps
+sh setup.sh uninstall --prefix /path/to/apps
+```
+
+`install` copies the local `sift` next to `setup.sh` and works offline. `update` fetches the latest runtime script from `https://raw.githubusercontent.com/sryup/sift/main/sift` over HTTPS, checks its format/version and shell syntax, then replaces the installed file via a same-filesystem rename. Download or validation failures leave the installed executable intact. Older versions are refused; identical executable files are left alone, while missing executable permission is repaired. Format/syntax checks are not cryptographic signature verification: updates trust the repository and HTTPS.
+
+The helper refuses symlink destinations and files it does not recognize as Sift. `uninstall` removes only the selected installed `sift` file; it leaves the source checkout and directories in place. Use `command -v sift` to check which copy your shell runs if you have multiple installations.
+
+Updating does not run `git pull`, update `setup.sh`, or schedule background updates. Run `git pull --ff-only` separately to refresh this checkout and its helper/documentation. The snapshot command `sift` remains read-only.
+
+### Running Without Installation
+
+```sh
+sh ./sift
 ```
 
 ## Command-Line Options
