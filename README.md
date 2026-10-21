@@ -108,16 +108,6 @@ sudo rm /usr/local/bin/sift
 - **Temperature Sensors:** VM/container readings depend on which host sensors are exposed; no usable sensors means `N/A`. Sift assumes standard millidegree-Celsius readings and does not apply `sensors.conf` calibration or voltage-to-temperature conversion. Known [VT1211 external channels](https://docs.kernel.org/hwmon/vt1211.html#temperature-monitoring), which require board-specific scaling, are skipped; its internal `temp2` remains supported. Other non-standard drivers may need separate conversion support.
 - **High-Latency Remote Mounts:** If the root filesystem (`/`) is mounted over a network share (such as NFS or CIFS), execution time may be affected by network latency when querying `df`.
 
-## Tests
-
-Run the temperature regression tests on Linux with a POSIX shell:
-
-```sh
-sh tests/temperature.sh
-```
-
-Tests use temporary sysfs fixtures, need no root privileges or real sensors, and do not modify `/sys`.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
