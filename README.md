@@ -25,7 +25,7 @@ server (Debian GNU/Linux 13 (trixie) x86_64)
 ├─ cpu     AMD Ryzen 7 7800X3D (16)
 ├─ load    0.15, 0.08, 0.02
 ├─ memory  4.2 GiB / 31.2 GiB (13%)
-├─ temp    47.5 °C
+├─ temp    47.5 °C (max: k10temp / Tctl)
 └─ disk    45.8 GiB / 468.2 GiB (10%)
 ```
 
@@ -44,7 +44,17 @@ Sift is intended solely for Linux operating systems. It does not require externa
 - `/proc/loadavg` (for 1, 5, and 15-minute load averages)
 - `/proc/meminfo` (for `MemTotal` and `MemAvailable`)
 - `/proc/sys/kernel/hostname` (for system hostname)
-- `/sys/class/thermal` and `/sys/class/hwmon` (for the highest readable hardware temperature)
+- `/sys/class/thermal` and `/sys/class/hwmon` (for the highest accepted hardware temperature and its source)
+
+### Temperature Output (v0.2.1)
+
+`temp` shows the highest accepted reading across available sensors, followed by its source; it is not necessarily the CPU temperature or an overall system temperature. Hwmon sources use the device `name` and `temp*_label`, falling back to identifiers such as `hwmon0 / temp1`. Thermal sources use `type` and the zone identifier, such as `x86_pkg_temp / thermal_zone0`. Equal readings keep the first source found, with hwmon checked before thermal zones.
+
+Sift skips hwmon channels with `temp*_fault=1` or `temp*_enable=0`. Missing status attributes are optional; present attributes that cannot be read or contain unexpected values cause that channel to be skipped. Thermal-zone `mode=disabled` is not used to reject readings because it controls kernel thermal management. Temperature alarms do not invalidate a reading.
+
+Input must be a signed or unsigned integer in millidegrees Celsius within the sanity range -273.15 to 300 °C, then is displayed to one decimal place. Zero, negative readings, and readings such as 125 °C are not automatically errors. These checks cannot detect every faulty or miscalibrated sensor. With no accepted readings, Sift displays `N/A`.
+
+Attribute semantics follow the Linux kernel documentation for [hwmon](https://docs.kernel.org/hwmon/sysfs-interface.html) and [thermal zones](https://docs.kernel.org/driver-api/thermal/sysfs-api.html).
 
 ## Installation & Usage
 
@@ -95,8 +105,18 @@ sudo rm /usr/local/bin/sift
 
 - **Container CPU Metrics:** CPU core count is derived from `/proc/cpuinfo`. In container environments without virtualization layers (such as `lxcfs`), this count may reflect the host system's logical processors rather than container-specific cgroup CPU quotas or limits.
 - **Non-Standard Architectures:** Linux distributions on certain architectures (e.g., IBM s390x) format `/proc/cpuinfo` with different field keys. On such systems, Sift displays `(N/A)` for processor count rather than failing. Sift has not been validated on every niche Linux distribution or hardware architecture.
-- **Temperature Sensors:** Temperature output is the highest valid reading exposed through Linux thermal zones or hwmon. Virtual machines, containers, or systems without readable sensors display `N/A`.
+- **Temperature Sensors:** VM/container readings depend on which host sensors are exposed; no usable sensors means `N/A`. Sift assumes standard millidegree-Celsius readings and does not apply `sensors.conf` calibration or voltage-to-temperature conversion. Known [VT1211 external channels](https://docs.kernel.org/hwmon/vt1211.html#temperature-monitoring), which require board-specific scaling, are skipped; its internal `temp2` remains supported. Other non-standard drivers may need separate conversion support.
 - **High-Latency Remote Mounts:** If the root filesystem (`/`) is mounted over a network share (such as NFS or CIFS), execution time may be affected by network latency when querying `df`.
+
+## Tests
+
+Run the temperature regression tests on Linux with a POSIX shell:
+
+```sh
+sh tests/temperature.sh
+```
+
+Tests use temporary sysfs fixtures, need no root privileges or real sensors, and do not modify `/sys`.
 
 ## License
 
